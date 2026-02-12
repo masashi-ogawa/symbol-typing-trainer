@@ -1,73 +1,53 @@
-# React + TypeScript + Vite
+# Symbol Typing Trainer
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+40%キーボードのレイヤー操作に慣れるための、**記号入力に特化したタイピング練習ツール**です。
+通常の文章入力ではなく、括弧や演算子、複数文字の記号コンボ（例: `===`, `=>`）を素早く入力できるようになることを目的にしています。
 
-Currently, two official plugins are available:
+## 機能
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **出題モード**
+  - `1文字`: 単体の記号（括弧、句読点、演算子など）
+  - `2〜3文字`: 記号コンボ（例: `=>`, `===`, `&&`, `/*` など）
+- **Typed表示**
+  - 正解するまでに押したキーをすべて表示します（ミスタイプも含む）
+  - 正解したらリセットされ、次の問題に進みます
+- **統計**
+  - Attempts / Correct / Miss / Accuracy
+  - 苦手トップ10（低正答率 → 高試行）
+- **操作**
+  - 画面をクリックしなくても、キー入力を全体で拾います
+  - Pause / Resume / Reset
 
-## React Compiler
+## 技術スタック
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- React + TypeScript + Vite
 
-## Expanding the ESLint configuration
+## 使い方
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+依存関係のインストール:
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+開発サーバ起動:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm dev
 ```
+
+ビルド:
+
+```bash
+pnpm build
+```
+
+プレビュー:
+
+```bash
+pnpm preview
+```
+
+## 開発メモ
+
+- コア実装は主に `src/App.tsx` にあります。
