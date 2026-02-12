@@ -67,7 +67,10 @@ export default function App() {
   }, [mode])
 
   const [target, setTarget] = useState<string>(() => pickRandom(pool))
+  // `typed` is what we show to the user: everything they typed until they solve the current target.
   const [typed, setTyped] = useState<string>('')
+  // `progress` is the current matching buffer (resets on mismatch).
+  const [progress, setProgress] = useState<string>('')
 
   const [totalAttempts, setTotalAttempts] = useState(0)
   const [totalCorrect, setTotalCorrect] = useState(0)
@@ -83,6 +86,7 @@ export default function App() {
     const next = pickRandom(pool)
     setTarget(next)
     setTyped('')
+    setProgress('')
     shownAtRef.current = nowMs()
     // keep totals; they are useful across modes
   }, [pool])
@@ -91,6 +95,7 @@ export default function App() {
     const next = pickRandom(pool)
     setTarget(next)
     setTyped('')
+    setProgress('')
     shownAtRef.current = nowMs()
   }
 
@@ -103,6 +108,7 @@ export default function App() {
     const next = pickRandom(pool)
     setTarget(next)
     setTyped('')
+    setProgress('')
     shownAtRef.current = nowMs()
   }
 
@@ -133,14 +139,17 @@ export default function App() {
 
       e.preventDefault()
 
-      const nextTyped = typed + key
+      // Always show what the user actually typed.
+      setTyped(prev => prev + key)
+
+      const nextProgress = progress + key
 
       // If the prefix is still matching, keep going.
-      if (target.startsWith(nextTyped)) {
-        setTyped(nextTyped)
+      if (target.startsWith(nextProgress)) {
+        setProgress(nextProgress)
 
         // Completed.
-        if (nextTyped === target) {
+        if (nextProgress === target) {
           const elapsed = nowMs() - shownAtRef.current
           setLastTimeMs(elapsed)
 
@@ -153,16 +162,16 @@ export default function App() {
         return
       }
 
-      // Mismatch -> count as miss attempt, then reset typed buffer.
+      // Mismatch -> count as miss attempt, then reset matching buffer.
       setTotalAttempts(v => v + 1)
       setTotalMiss(v => v + 1)
       bumpStat(target, false)
-      setTyped('')
+      setProgress('')
     }
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isRunning, target, typed, pool])
+  }, [isRunning, target, progress, pool])
 
   const accuracy = totalAttempts === 0 ? 0 : (totalCorrect / totalAttempts) * 100
 
@@ -217,11 +226,11 @@ export default function App() {
           <div className="target" aria-label="target">{target}</div>
           <div className="hint" aria-label="status">
             <span className="label">Typed:</span>
-            <span className="typed">{typed || '—'}</span>
+            <span className="typed">{typed || ''}</span>
           </div>
           <div className="hint">
             <span className="label">Last:</span>
-            <span>{lastTimeMs == null ? '—' : formatMs(lastTimeMs)}</span>
+            <span>{lastTimeMs == null ? '' : formatMs(lastTimeMs)}</span>
           </div>
           <p className="help">
             画面をクリックする必要はありません（キー入力は全体で拾います）。
