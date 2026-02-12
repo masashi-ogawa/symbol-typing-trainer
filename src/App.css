@@ -101,6 +101,45 @@ select {
   margin: 14px 0 0;
 }
 
+.picker {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.pickerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pickerTitle {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.pickerButtons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.checkGrid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px 10px;
+}
+
+.checkItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
 .stats {
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 16px;
