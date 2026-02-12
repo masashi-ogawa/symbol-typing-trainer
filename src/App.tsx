@@ -1,7 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 
-type Mode = 'single' | 'combo'
+type Mode = 'single' | 'combo' | 'digits'
+
+type DigitsSettings = {
+  minIntDigits: number
+  maxIntDigits: number
+  enableSign: boolean
+  enableDecimal: boolean
+  minFracDigits: number
+  maxFracDigits: number
+}
 
 type Stat = {
   attempts: number
@@ -57,6 +66,56 @@ function pickRandom(list: readonly string[]): string {
   return list[Math.floor(Math.random() * list.length)]
 }
 
+function clampInt(n: number, min: number, max: number): number {
+  if (!Number.isFinite(n)) return min
+  return Math.min(max, Math.max(min, Math.trunc(n)))
+}
+
+function randomInt(min: number, max: number): number {
+  const a = Math.min(min, max)
+  const b = Math.max(min, max)
+  return a + Math.floor(Math.random() * (b - a + 1))
+}
+
+function buildDigitsString(len: number, opts: { firstNonZero?: boolean } = {}): string {
+  const n = Math.max(1, Math.trunc(len))
+  const chars: string[] = []
+  for (let i = 0; i < n; i++) {
+    const digit = (i === 0 && opts.firstNonZero) ? randomInt(1, 9) : randomInt(0, 9)
+    chars.push(String(digit))
+  }
+  return chars.join('')
+}
+
+function generateDigitsTarget(settings: DigitsSettings): string {
+  const minIntDigits = clampInt(settings.minIntDigits, 1, 50)
+  const maxIntDigits = clampInt(settings.maxIntDigits, 1, 50)
+  const minFracDigits = clampInt(settings.minFracDigits, 1, 50)
+  const maxFracDigits = clampInt(settings.maxFracDigits, 1, 50)
+
+  const intLen = randomInt(minIntDigits, maxIntDigits)
+
+  const decimalRatio = settings.enableDecimal ? 0.3 : 0
+  const signRatio = settings.enableSign ? 0.3 : 0
+
+  const withDecimal = Math.random() < decimalRatio
+  const withSign = Math.random() < signRatio
+
+  const sign = withSign ? (Math.random() < 0.5 ? '+' : '-') : ''
+
+  if (!withDecimal) {
+    // Integer: no leading zero.
+    return sign + buildDigitsString(intLen, { firstNonZero: true })
+  }
+
+  // Decimal: always `intPart + '.' + fracPart`.
+  // Integer part allows leading zero (fully random) per requirement.
+  const intPart = buildDigitsString(intLen)
+  const fracLen = randomInt(minFracDigits, maxFracDigits)
+  const fracPart = buildDigitsString(fracLen)
+  return sign + intPart + '.' + fracPart
+}
+
 function formatMs(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return '-'
   return `${Math.round(ms)} ms`
@@ -70,6 +129,7 @@ export default function App() {
   const [enabledCombo, setEnabledCombo] = useState<Record<string, boolean>>(() => initEnabledMap(COMBOS))
 
   const basePool = useMemo(() => {
+    if (mode === 'digits') return []
     return mode === 'single' ? [...SINGLE_SYMBOLS] : [...COMBOS]
   }, [mode])
 
@@ -79,7 +139,16 @@ export default function App() {
     return basePool.filter(item => enabledMap[item] !== false)
   }, [basePool, enabledMap])
 
-  const [target, setTarget] = useState<string>(() => pickRandom(pool))
+  const [digitsSettings, setDigitsSettings] = useState<DigitsSettings>(() => ({
+    minIntDigits: 3,
+    maxIntDigits: 7,
+    enableSign: false,
+    enableDecimal: false,
+    minFracDigits: 1,
+    maxFracDigits: 4,
+  }))
+
+  const [target, setTarget] = useState<string>(() => pickRandom(SINGLE_SYMBOLS))
   // `typed` is what we show to the user: everything they typed until they solve the current target.
   const [typed, setTyped] = useState<string>('')
   // `progress` is the current matching buffer (resets on mismatch).
@@ -88,53 +157,63 @@ export default function App() {
   const [totalAttempts, setTotalAttempts] = useState(0)
   const [totalCorrect, setTotalCorrect] = useState(0)
   const [totalMiss, setTotalMiss] = useState(0)
+  const [totalBackspace, setTotalBackspace] = useState(0)
   const [lastTimeMs, setLastTimeMs] = useState<number | null>(null)
 
   const [statsByItem, setStatsByItem] = useState<Record<string, Stat>>({})
 
   const shownAtRef = useRef<number>(nowMs())
 
-  // When mode changes, reset with a new target from the new pool.
-  useEffect(() => {
-    if (pool.length === 0) {
-      setTarget('')
-    } else {
-      const next = pickRandom(pool)
-      setTarget(next)
+  const resetQuestion = useCallback((nextMode: Mode, overrides?: {
+    enabledSingle?: Record<string, boolean>
+    enabledCombo?: Record<string, boolean>
+    digitsSettings?: DigitsSettings
+  }) => {
+    const effectiveDigitsSettings = overrides?.digitsSettings ?? digitsSettings
+    const effectiveEnabledSingle = overrides?.enabledSingle ?? enabledSingle
+    const effectiveEnabledCombo = overrides?.enabledCombo ?? enabledCombo
+
+    if (nextMode === 'digits') {
+      setTarget(generateDigitsTarget(effectiveDigitsSettings))
+      setTyped('')
+      setProgress('')
+      shownAtRef.current = nowMs()
+      return
     }
+
+    const list = nextMode === 'single' ? [...SINGLE_SYMBOLS] : [...COMBOS]
+    const enabled = nextMode === 'single' ? effectiveEnabledSingle : effectiveEnabledCombo
+    const nextPool = list.filter(item => enabled[item] !== false)
+    setTarget(nextPool.length === 0 ? '' : pickRandom(nextPool))
     setTyped('')
     setProgress('')
     shownAtRef.current = nowMs()
-    // keep totals; they are useful across modes
-  }, [pool])
+  }, [digitsSettings, enabledCombo, enabledSingle])
 
-  const nextQuestion = () => {
+  const nextQuestion = useCallback(() => {
+    if (mode === 'digits') {
+      resetQuestion('digits')
+      return
+    }
     if (pool.length === 0) return
     const next = pickRandom(pool)
     setTarget(next)
     setTyped('')
     setProgress('')
     shownAtRef.current = nowMs()
-  }
+  }, [mode, pool, resetQuestion])
 
   const resetAll = () => {
     setTotalAttempts(0)
     setTotalCorrect(0)
     setTotalMiss(0)
+    setTotalBackspace(0)
     setLastTimeMs(null)
     setStatsByItem({})
-    if (pool.length === 0) {
-      setTarget('')
-    } else {
-      const next = pickRandom(pool)
-      setTarget(next)
-    }
-    setTyped('')
-    setProgress('')
-    shownAtRef.current = nowMs()
+    resetQuestion(mode)
   }
 
-  const bumpStat = (item: string, isCorrect: boolean, elapsedMs?: number) => {
+  const bumpStat = useCallback((item: string, isCorrect: boolean, elapsedMs?: number) => {
     setStatsByItem(prev => {
       const current = prev[item] ?? { attempts: 0, correct: 0, totalMs: 0 }
       const next: Stat = {
@@ -144,7 +223,7 @@ export default function App() {
       }
       return { ...prev, [item]: next }
     })
-  }
+  }, [])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -153,6 +232,47 @@ export default function App() {
 
       // Let browser shortcuts work (Cmd+R etc.)
       if (e.metaKey || e.ctrlKey || e.altKey) return
+
+      if (mode === 'digits') {
+        if (e.key === 'Backspace') {
+          e.preventDefault()
+          setTotalBackspace(v => v + 1)
+          setTyped(prev => prev.slice(0, -1))
+          setProgress(prev => prev.slice(0, -1))
+          return
+        }
+
+        const key = normalizeKey(e.key)
+        if (!key) return
+        if (key.length !== 1) return
+
+        e.preventDefault()
+
+        const expected = target[progress.length] ?? ''
+        if (key === expected) {
+          const nextProgress = progress + key
+          setTyped(nextProgress)
+          setProgress(nextProgress)
+
+          if (nextProgress === target) {
+            const elapsed = nowMs() - shownAtRef.current
+            setLastTimeMs(elapsed)
+
+            setTotalAttempts(v => v + 1)
+            setTotalCorrect(v => v + 1)
+            bumpStat(target, true, elapsed)
+
+            nextQuestion()
+          }
+          return
+        }
+
+        // Mismatch: count as miss attempt. Progress does not reset (Backspace can fix).
+        setTotalAttempts(v => v + 1)
+        setTotalMiss(v => v + 1)
+        bumpStat(target, false)
+        return
+      }
 
       const key = normalizeKey(e.key)
       if (!key) return
@@ -194,7 +314,7 @@ export default function App() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isRunning, target, progress, pool])
+  }, [bumpStat, isRunning, mode, nextQuestion, progress, target])
 
   const accuracy = totalAttempts === 0 ? 0 : (totalCorrect / totalAttempts) * 100
 
@@ -223,10 +343,15 @@ export default function App() {
             Mode
             <select
               value={mode}
-              onChange={(e) => setMode(e.target.value as Mode)}
+              onChange={(e) => {
+                const nextMode = e.target.value as Mode
+                setMode(nextMode)
+                resetQuestion(nextMode)
+              }}
             >
               <option value="single">1文字</option>
               <option value="combo">2〜3文字</option>
+              <option value="digits">数字</option>
             </select>
           </label>
 
@@ -246,7 +371,7 @@ export default function App() {
 
       <main className="main">
         <section className="trainer" aria-label="trainer">
-          <div className="target" aria-label="target">{pool.length === 0 ? '—' : target}</div>
+          <div className="target" aria-label="target">{mode === 'digits' ? (target || '—') : (pool.length === 0 ? '—' : target)}</div>
           <div className="hint" aria-label="status">
             <span className="label">Typed:</span>
             <span className="typed">{typed || ''}</span>
@@ -257,9 +382,110 @@ export default function App() {
           </div>
           <p className="help">
             画面をクリックする必要はありません（キー入力は全体で拾います）。
-            ミスすると入力バッファがリセットされます。
+            {mode === 'digits'
+              ? 'ミスしても進捗は戻りません（Backspaceで修正できます）。'
+              : 'ミスすると入力バッファがリセットされます。'}
           </p>
 
+          {mode === 'digits' ? (
+            <div className="picker" aria-label="digits-settings">
+              <div className="pickerHeader">
+                <div className="pickerTitle">出題設定（数字）</div>
+              </div>
+
+              <div className="checkGrid" role="group" aria-label="digits-options">
+                <label className="checkItem">
+                  <span>整数 桁数(min)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={digitsSettings.minIntDigits}
+                    onChange={(e) => {
+                      const v = clampInt(Number(e.target.value), 1, 50)
+                      const next = { ...digitsSettings, minIntDigits: Math.min(v, digitsSettings.maxIntDigits) }
+                      setDigitsSettings(next)
+                      resetQuestion('digits', { digitsSettings: next })
+                    }}
+                  />
+                </label>
+                <label className="checkItem">
+                  <span>整数 桁数(max)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={digitsSettings.maxIntDigits}
+                    onChange={(e) => {
+                      const v = clampInt(Number(e.target.value), 1, 50)
+                      const next = { ...digitsSettings, maxIntDigits: Math.max(v, digitsSettings.minIntDigits) }
+                      setDigitsSettings(next)
+                      resetQuestion('digits', { digitsSettings: next })
+                    }}
+                  />
+                </label>
+
+                <label className="checkItem">
+                  <input
+                    type="checkbox"
+                    checked={digitsSettings.enableSign}
+                    onChange={(e) => {
+                      const next = { ...digitsSettings, enableSign: e.target.checked }
+                      setDigitsSettings(next)
+                      resetQuestion('digits', { digitsSettings: next })
+                    }}
+                  />
+                  <span className="mono">符号（+/-）</span>
+                </label>
+
+                <label className="checkItem">
+                  <input
+                    type="checkbox"
+                    checked={digitsSettings.enableDecimal}
+                    onChange={(e) => {
+                      const next = { ...digitsSettings, enableDecimal: e.target.checked }
+                      setDigitsSettings(next)
+                      resetQuestion('digits', { digitsSettings: next })
+                    }}
+                  />
+                  <span className="mono">小数（.）</span>
+                </label>
+
+                <label className="checkItem">
+                  <span>小数 桁数(min)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    disabled={!digitsSettings.enableDecimal}
+                    value={digitsSettings.minFracDigits}
+                    onChange={(e) => {
+                      const v = clampInt(Number(e.target.value), 1, 50)
+                      const next = { ...digitsSettings, minFracDigits: Math.min(v, digitsSettings.maxFracDigits) }
+                      setDigitsSettings(next)
+                      resetQuestion('digits', { digitsSettings: next })
+                    }}
+                  />
+                </label>
+                <label className="checkItem">
+                  <span>小数 桁数(max)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    disabled={!digitsSettings.enableDecimal}
+                    value={digitsSettings.maxFracDigits}
+                    onChange={(e) => {
+                      const v = clampInt(Number(e.target.value), 1, 50)
+                      const next = { ...digitsSettings, maxFracDigits: Math.max(v, digitsSettings.minFracDigits) }
+                      setDigitsSettings(next)
+                      resetQuestion('digits', { digitsSettings: next })
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+          ) : (
           <div className="picker" aria-label="picker">
             <div className="pickerHeader">
               <div className="pickerTitle">
@@ -270,8 +496,15 @@ export default function App() {
                   type="button"
                   className="btn"
                   onClick={() => {
-                    if (mode === 'single') setEnabledSingle(initEnabledMap(SINGLE_SYMBOLS))
-                    else setEnabledCombo(initEnabledMap(COMBOS))
+                    if (mode === 'single') {
+                      const next = initEnabledMap(SINGLE_SYMBOLS)
+                      setEnabledSingle(next)
+                      resetQuestion('single', { enabledSingle: next })
+                    } else {
+                      const next = initEnabledMap(COMBOS)
+                      setEnabledCombo(next)
+                      resetQuestion('combo', { enabledCombo: next })
+                    }
                   }}
                 >
                   全てON
@@ -281,8 +514,13 @@ export default function App() {
                   className="btn"
                   onClick={() => {
                     const next = Object.fromEntries(basePool.map(item => [item, false]))
-                    if (mode === 'single') setEnabledSingle(next)
-                    else setEnabledCombo(next)
+                    if (mode === 'single') {
+                      setEnabledSingle(next)
+                      resetQuestion('single', { enabledSingle: next })
+                    } else {
+                      setEnabledCombo(next)
+                      resetQuestion('combo', { enabledCombo: next })
+                    }
                   }}
                 >
                   全てOFF
@@ -300,9 +538,13 @@ export default function App() {
                       onChange={(e) => {
                         const checked = e.target.checked
                         if (mode === 'single') {
-                          setEnabledSingle(prev => ({ ...prev, [item]: checked }))
+                          const next = { ...enabledSingle, [item]: checked }
+                          setEnabledSingle(next)
+                          resetQuestion('single', { enabledSingle: next })
                         } else {
-                          setEnabledCombo(prev => ({ ...prev, [item]: checked }))
+                          const next = { ...enabledCombo, [item]: checked }
+                          setEnabledCombo(next)
+                          resetQuestion('combo', { enabledCombo: next })
                         }
                       }}
                     />
@@ -316,6 +558,7 @@ export default function App() {
               <div className="empty">出題する記号がありません。チェックを入れてください。</div>
             ) : null}
           </div>
+          )}
         </section>
 
         <section className="stats" aria-label="stats">
@@ -332,6 +575,10 @@ export default function App() {
             <div className="statCard">
               <div className="statLabel">Miss</div>
               <div className="statValue">{totalMiss}</div>
+            </div>
+            <div className="statCard">
+              <div className="statLabel">Backspace</div>
+              <div className="statValue">{totalBackspace}</div>
             </div>
             <div className="statCard">
               <div className="statLabel">Accuracy</div>
