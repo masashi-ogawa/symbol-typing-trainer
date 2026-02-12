@@ -37,6 +37,10 @@ const COMBOS = [
   '</', '/>',
 ] as const
 
+function initEnabledMap(list: readonly string[]): Record<string, boolean> {
+  return Object.fromEntries(list.map(item => [item, true]))
+}
+
 function nowMs(): number {
   return (typeof performance !== 'undefined' ? performance.now() : Date.now())
 }
@@ -62,9 +66,18 @@ export default function App() {
   const [mode, setMode] = useState<Mode>('single')
   const [isRunning, setIsRunning] = useState(true)
 
-  const pool = useMemo(() => {
+  const [enabledSingle, setEnabledSingle] = useState<Record<string, boolean>>(() => initEnabledMap(SINGLE_SYMBOLS))
+  const [enabledCombo, setEnabledCombo] = useState<Record<string, boolean>>(() => initEnabledMap(COMBOS))
+
+  const basePool = useMemo(() => {
     return mode === 'single' ? [...SINGLE_SYMBOLS] : [...COMBOS]
   }, [mode])
+
+  const enabledMap = mode === 'single' ? enabledSingle : enabledCombo
+
+  const pool = useMemo(() => {
+    return basePool.filter(item => enabledMap[item] !== false)
+  }, [basePool, enabledMap])
 
   const [target, setTarget] = useState<string>(() => pickRandom(pool))
   // `typed` is what we show to the user: everything they typed until they solve the current target.
@@ -83,8 +96,12 @@ export default function App() {
 
   // When mode changes, reset with a new target from the new pool.
   useEffect(() => {
-    const next = pickRandom(pool)
-    setTarget(next)
+    if (pool.length === 0) {
+      setTarget('')
+    } else {
+      const next = pickRandom(pool)
+      setTarget(next)
+    }
     setTyped('')
     setProgress('')
     shownAtRef.current = nowMs()
@@ -92,6 +109,7 @@ export default function App() {
   }, [pool])
 
   const nextQuestion = () => {
+    if (pool.length === 0) return
     const next = pickRandom(pool)
     setTarget(next)
     setTyped('')
@@ -105,8 +123,12 @@ export default function App() {
     setTotalMiss(0)
     setLastTimeMs(null)
     setStatsByItem({})
-    const next = pickRandom(pool)
-    setTarget(next)
+    if (pool.length === 0) {
+      setTarget('')
+    } else {
+      const next = pickRandom(pool)
+      setTarget(next)
+    }
     setTyped('')
     setProgress('')
     shownAtRef.current = nowMs()
@@ -127,6 +149,7 @@ export default function App() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!isRunning) return
+      if (!target) return
 
       // Let browser shortcuts work (Cmd+R etc.)
       if (e.metaKey || e.ctrlKey || e.altKey) return
@@ -223,7 +246,7 @@ export default function App() {
 
       <main className="main">
         <section className="trainer" aria-label="trainer">
-          <div className="target" aria-label="target">{target}</div>
+          <div className="target" aria-label="target">{pool.length === 0 ? '—' : target}</div>
           <div className="hint" aria-label="status">
             <span className="label">Typed:</span>
             <span className="typed">{typed || ''}</span>
@@ -236,6 +259,63 @@ export default function App() {
             画面をクリックする必要はありません（キー入力は全体で拾います）。
             ミスすると入力バッファがリセットされます。
           </p>
+
+          <div className="picker" aria-label="picker">
+            <div className="pickerHeader">
+              <div className="pickerTitle">
+                出題する記号（{pool.length} / {basePool.length}）
+              </div>
+              <div className="pickerButtons">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    if (mode === 'single') setEnabledSingle(initEnabledMap(SINGLE_SYMBOLS))
+                    else setEnabledCombo(initEnabledMap(COMBOS))
+                  }}
+                >
+                  全てON
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    const next = Object.fromEntries(basePool.map(item => [item, false]))
+                    if (mode === 'single') setEnabledSingle(next)
+                    else setEnabledCombo(next)
+                  }}
+                >
+                  全てOFF
+                </button>
+              </div>
+            </div>
+
+            {basePool.length === 0 ? null : (
+              <div className="checkGrid" role="group" aria-label="symbols">
+                {basePool.map(item => (
+                  <label key={item} className="checkItem">
+                    <input
+                      type="checkbox"
+                      checked={enabledMap[item] !== false}
+                      onChange={(e) => {
+                        const checked = e.target.checked
+                        if (mode === 'single') {
+                          setEnabledSingle(prev => ({ ...prev, [item]: checked }))
+                        } else {
+                          setEnabledCombo(prev => ({ ...prev, [item]: checked }))
+                        }
+                      }}
+                    />
+                    <span className="mono">{item}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {pool.length === 0 ? (
+              <div className="empty">出題する記号がありません。チェックを入れてください。</div>
+            ) : null}
+          </div>
         </section>
 
         <section className="stats" aria-label="stats">
